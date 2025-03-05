@@ -622,6 +622,10 @@ function calculateRemainingSchedule() {
   const todayLimit = document.getElementById('today-limit').value;
   console.log('Limite aujourd\'hui:', todayLimit);
   
+  // Récupérer l'état de la case à cocher "Pause déjeuner déjà prise"
+  const lunchTaken = document.getElementById('lunch-taken').checked;
+  console.log('Pause déjeuner déjà prise:', lunchTaken);
+  
   // Calculer le nombre total de minutes travaillées cette semaine
   const totalMinutesWorked = hoursWorked * 60 + minutesWorked;
   console.log('Total minutes travaillées:', totalMinutesWorked);
@@ -681,6 +685,11 @@ function calculateRemainingSchedule() {
     else if (todayLimit) {
       schedule[currentDayName].limit = todayLimit;
     }
+    
+    // Si la pause déjeuner a déjà été prise, marquer cette information
+    if (lunchTaken) {
+      schedule[currentDayName].lunchTaken = true;
+    }
   }
   
   // Calculer les minutes restantes à travailler cette semaine
@@ -693,10 +702,10 @@ function calculateRemainingSchedule() {
   // Calculer les horaires restants
   if (uniformEndTime) {
     console.log('Calcul avec heures de fin uniformes, weeklyHours =', weeklyHours);
-    calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours);
+    calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours, lunchTaken);
   } else {
     console.log('Calcul avec heures de travail égales, weeklyHours =', weeklyHours);
-    calculateRemainingEqualWorkHours(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours);
+    calculateRemainingEqualWorkHours(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours, lunchTaken);
   }
   
   // Afficher les résultats
@@ -721,7 +730,7 @@ function calculateRemainingSchedule() {
 }
 
 // Fonction pour calculer les horaires restants avec des heures de fin uniformes
-function calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours) {
+function calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours, lunchTaken) {
   console.log('Début de calculateRemainingUniformEndTimes avec weeklyHours =', weeklyHours);
   
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -736,14 +745,35 @@ function calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDa
     return true;
   });
   
+  // Si on continue aujourd'hui, utiliser l'heure actuelle comme heure de début pour le jour actuel
+  if (continueToday && currentDayName && schedule[currentDayName]) {
+    // Récupérer l'heure actuelle du formulaire
+    const currentTime = document.getElementById('current-time').value;
+    if (currentTime) {
+      // Utiliser l'heure actuelle comme heure de début pour le calcul du jour actuel
+      schedule[currentDayName].currentTime = currentTime;
+      console.log(`Utilisation de l'heure actuelle (${currentTime}) comme point de départ pour ${currentDayName}`);
+    }
+  }
+  
   // Calculer les minutes déjà allouées aux jours avec des limites
   let allocatedMinutes = 0;
   remainingDays.forEach(day => {
     if (schedule[day].limit) {
-      const startMinutes = timeToMinutes(schedule[day].start);
+      // Pour le jour actuel, utiliser l'heure actuelle comme point de départ si disponible
+      const startTime = (day === currentDayName && schedule[day].currentTime) ? schedule[day].currentTime : schedule[day].start;
+      const startMinutes = timeToMinutes(startTime);
       const endMinutes = timeToMinutes(schedule[day].limit);
       
-      const workMinutes = endMinutes - startMinutes - schedule[day].lunch;
+      // Déterminer si la pause déjeuner doit être prise en compte pour ce jour
+      let lunchMinutes = schedule[day].lunch;
+      if (day === currentDayName && schedule[day].lunchTaken) {
+        // Si la pause déjeuner a déjà été prise pour le jour actuel, ne pas la compter
+        lunchMinutes = 0;
+        console.log(`Pause déjeuner déjà prise pour ${day}, ne pas la compter dans le calcul`);
+      }
+      
+      const workMinutes = endMinutes - startMinutes - lunchMinutes;
       
       allocatedMinutes += workMinutes > 0 ? workMinutes : 0;
       
@@ -765,8 +795,18 @@ function calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDa
     let totalEndTimeMinutes = 0;
     
     daysWithoutLimits.forEach(day => {
-      const startMinutes = timeToMinutes(schedule[day].start);
-      const endMinutes = startMinutes + avgWorkMinutesPerDay + schedule[day].lunch;
+      // Pour le jour actuel, utiliser l'heure actuelle comme point de départ si disponible
+      const startTime = (day === currentDayName && schedule[day].currentTime) ? schedule[day].currentTime : schedule[day].start;
+      const startMinutes = timeToMinutes(startTime);
+      
+      // Déterminer si la pause déjeuner doit être prise en compte pour ce jour
+      let lunchMinutes = schedule[day].lunch;
+      if (day === currentDayName && schedule[day].lunchTaken) {
+        // Si la pause déjeuner a déjà été prise pour le jour actuel, ne pas la compter
+        lunchMinutes = 0;
+      }
+      
+      const endMinutes = startMinutes + avgWorkMinutesPerDay + lunchMinutes;
       totalEndTimeMinutes += endMinutes;
     });
     
@@ -778,11 +818,20 @@ function calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDa
     let totalWorkMinutes = 0;
     
     daysWithoutLimits.forEach(day => {
-      const startMinutes = timeToMinutes(schedule[day].start);
+      // Pour le jour actuel, utiliser l'heure actuelle comme point de départ si disponible
+      const startTime = (day === currentDayName && schedule[day].currentTime) ? schedule[day].currentTime : schedule[day].start;
+      const startMinutes = timeToMinutes(startTime);
       const endMinutes = timeToMinutes(commonEndTime);
       
+      // Déterminer si la pause déjeuner doit être prise en compte pour ce jour
+      let lunchMinutes = schedule[day].lunch;
+      if (day === currentDayName && schedule[day].lunchTaken) {
+        // Si la pause déjeuner a déjà été prise pour le jour actuel, ne pas la compter
+        lunchMinutes = 0;
+      }
+      
       // Calculer les minutes de travail pour ce jour
-      const workMinutes = endMinutes - startMinutes - schedule[day].lunch;
+      const workMinutes = endMinutes - startMinutes - lunchMinutes;
       
       schedule[day].end = commonEndTime;
       schedule[day].hours = (workMinutes / 60).toFixed(2);
@@ -823,7 +872,7 @@ function calculateRemainingUniformEndTimes(schedule, remainingMinutes, currentDa
 }
 
 // Fonction pour calculer les horaires restants avec des heures de travail égales
-function calculateRemainingEqualWorkHours(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours) {
+function calculateRemainingEqualWorkHours(schedule, remainingMinutes, currentDayName, continueToday, weeklyHours, lunchTaken) {
   console.log('Début de calculateRemainingEqualWorkHours avec weeklyHours =', weeklyHours);
   
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -838,14 +887,35 @@ function calculateRemainingEqualWorkHours(schedule, remainingMinutes, currentDay
     return true;
   });
   
+  // Si on continue aujourd'hui, utiliser l'heure actuelle comme heure de début pour le jour actuel
+  if (continueToday && currentDayName && schedule[currentDayName]) {
+    // Récupérer l'heure actuelle du formulaire
+    const currentTime = document.getElementById('current-time').value;
+    if (currentTime) {
+      // Utiliser l'heure actuelle comme heure de début pour le calcul du jour actuel
+      schedule[currentDayName].currentTime = currentTime;
+      console.log(`Utilisation de l'heure actuelle (${currentTime}) comme point de départ pour ${currentDayName}`);
+    }
+  }
+  
   // Calculer les minutes déjà allouées aux jours avec des limites
   let allocatedMinutes = 0;
   remainingDays.forEach(day => {
     if (schedule[day].limit) {
-      const startMinutes = timeToMinutes(schedule[day].start);
+      // Pour le jour actuel, utiliser l'heure actuelle comme point de départ si disponible
+      const startTime = (day === currentDayName && schedule[day].currentTime) ? schedule[day].currentTime : schedule[day].start;
+      const startMinutes = timeToMinutes(startTime);
       const endMinutes = timeToMinutes(schedule[day].limit);
       
-      const workMinutes = endMinutes - startMinutes - schedule[day].lunch;
+      // Déterminer si la pause déjeuner doit être prise en compte pour ce jour
+      let lunchMinutes = schedule[day].lunch;
+      if (day === currentDayName && schedule[day].lunchTaken) {
+        // Si la pause déjeuner a déjà été prise pour le jour actuel, ne pas la compter
+        lunchMinutes = 0;
+        console.log(`Pause déjeuner déjà prise pour ${day}, ne pas la compter dans le calcul`);
+      }
+      
+      const workMinutes = endMinutes - startMinutes - lunchMinutes;
       
       allocatedMinutes += workMinutes > 0 ? workMinutes : 0;
       
@@ -867,12 +937,21 @@ function calculateRemainingEqualWorkHours(schedule, remainingMinutes, currentDay
     
     // Appliquer les heures de travail égales à tous les jours sans limites
     daysWithoutLimits.forEach((day, index) => {
-      const startMinutes = timeToMinutes(schedule[day].start);
+      // Pour le jour actuel, utiliser l'heure actuelle comme point de départ si disponible
+      const startTime = (day === currentDayName && schedule[day].currentTime) ? schedule[day].currentTime : schedule[day].start;
+      const startMinutes = timeToMinutes(startTime);
       // Ajouter une minute supplémentaire aux premiers jours si nécessaire pour atteindre exactement le total d'heures
       const additionalMinute = (index < extraMinutes) ? 1 : 0;
       const workMinutes = minutesPerDay + additionalMinute;
       
-      const endMinutes = startMinutes + workMinutes + schedule[day].lunch;
+      // Déterminer si la pause déjeuner doit être prise en compte pour ce jour
+      let lunchMinutes = schedule[day].lunch;
+      if (day === currentDayName && schedule[day].lunchTaken) {
+        // Si la pause déjeuner a déjà été prise pour le jour actuel, ne pas la compter
+        lunchMinutes = 0;
+      }
+      
+      const endMinutes = startMinutes + workMinutes + lunchMinutes;
       
       schedule[day].end = minutesToTime(endMinutes);
       schedule[day].hours = (workMinutes / 60).toFixed(2);
